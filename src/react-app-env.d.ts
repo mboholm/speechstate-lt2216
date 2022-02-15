@@ -43,7 +43,10 @@ interface SDSContext {
     time: string;
     person: string; 
     // ============
-
+    // MB. for jokes machine (in class)
+    category: string;
+    joke: string;
+    // ============
 }
 
 type SDSEvent =
