@@ -1,18 +1,9 @@
-import { Context } from "microsoft-cognitiveservices-speech-sdk/distrib/lib/src/common.speech/RecognizerConfig";
 import { MachineConfig, send, Action, assign } from "xstate";
 import { respond } from "xstate/lib/actions";
 
 
 function say(text: string): Action<SDSContext, SDSEvent> {
     return send((_context: SDSContext) => ({ type: "SPEAK", value: text }))
-}
-
-function findName(question: string) {    // MB
-    let q = question.split(" ");
-    let l = q.length;
-    let f = q[l-1];                      // MB. fix so that it can handle multi-token names, e.g. Elvis Presley
-    let n = f.replace("?", "")
-    return n
 }
 
 const grammar: { [index: string]: { title?: string, day?: string, time?: string } } = {
@@ -48,19 +39,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                     },
                     {
                         target: 'XIs',
-                        cond: (context) => context.recResult[0].utterance == "Who is Elvis?",
-                        actions: [
-                            (context) => console.log(context.recResult[0]), 
-                            (context) => console.log(findName(context.recResult[0].utterance)),
-                            assign({ person: (context) => findName(context.recResult[0].utterance)! }),
-                            // assign({ title: (context) => grammar[context.recResult[0].utterance].title! })
-                            (context) => console.log(`Person from Context: ${context.person}`),
-                            /*const kbRequest = 
-                            (text: string) => 
-                            fetch(new Request(`https://cors.eu.org/https://api.duckduckgo.com/?q=${text}&format=json&skip_disambig=1`)).then(data => data.json()) */
-                            (context) => console.log(kbRequest(context.person)) // read: https://xstate.js.org/docs/guides/communication.html#invoking-callbacks
-
-                        ]
+                        cond: (context) => context.recResult[0].utterance == "Who is Elvis" // MB. no variable :( stryka {name}?
                     },
                     {
                         target: '.nomatch'
@@ -124,7 +103,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
             },
             states: {
                 prompt: {
-                    entry: say("Elvis is the king of rock and roll."), // MB. fix variable
+                    entry: say("Elvis is the king of rock and roll.") // MB. fix variable
                 },
             }
         }, 

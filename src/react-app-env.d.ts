@@ -36,7 +36,14 @@ interface SDSContext {
     azureAuthorizationToken: string;
     audioCtx: any;
 
+    // MB. task parameters
+    // ============
     title: string;
+    day: string;
+    time: string;
+    person: string; 
+    // ============
+
 }
 
 type SDSEvent =
@@ -51,4 +58,5 @@ type SDSEvent =
     | { type: 'ENDSPEECH' }
     | { type: 'LISTEN' }
     | { type: 'TIMEOUT' }
-    | { type: 'SPEAK', value: string };
+    | { type: 'SPEAK', value: string }
+    ;

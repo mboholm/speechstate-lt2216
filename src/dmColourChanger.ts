@@ -11,20 +11,20 @@ function say(text: string): Action<SDSContext, SDSEvent> {
 
 export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
     initial: 'idle',
-    states: {
-        idle: {
+    states: { // MB. `states` start here
+        idle: { // MB. state 
             on: {
                 CLICK: 'init'
             }
         },
-        init: {
+        init: { // MB. state
             on: {
                 TTS_READY: 'welcome',
                 CLICK: 'welcome'
             }
         },
 
-        welcome: {
+        welcome: { // MB. complex state
             initial: 'prompt',
             on: {
                 RECOGNISED: [
@@ -42,11 +42,11 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 },
             }
         },
-        stop: {
+        stop: { // MB. state
             entry: say("Ok"),
             always: 'init'
         },
-        repaint: {
+        repaint: { // MB. state
             initial: 'prompt',
             states: {
                 prompt: {
@@ -59,5 +59,5 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 }
             }
         }
-    }
+    } // MB. `states` end here
 })
