@@ -1,20 +1,20 @@
 {
   "files": {
     "main.css": "/mboholm/speechstate-lt2216/static/css/main.e164979b.chunk.css",
-    "main.js": "/mboholm/speechstate-lt2216/static/js/main.7345715b.chunk.js",
-    "main.js.map": "/mboholm/speechstate-lt2216/static/js/main.7345715b.chunk.js.map",
+    "main.js": "/mboholm/speechstate-lt2216/static/js/main.4bde14d3.chunk.js",
+    "main.js.map": "/mboholm/speechstate-lt2216/static/js/main.4bde14d3.chunk.js.map",
     "runtime-main.js": "/mboholm/speechstate-lt2216/static/js/runtime-main.2c1fcf9a.js",
     "runtime-main.js.map": "/mboholm/speechstate-lt2216/static/js/runtime-main.2c1fcf9a.js.map",
-    "static/js/2.c4cdc6be.chunk.js": "/mboholm/speechstate-lt2216/static/js/2.c4cdc6be.chunk.js",
-    "static/js/2.c4cdc6be.chunk.js.map": "/mboholm/speechstate-lt2216/static/js/2.c4cdc6be.chunk.js.map",
+    "static/js/2.af45d00f.chunk.js": "/mboholm/speechstate-lt2216/static/js/2.af45d00f.chunk.js",
+    "static/js/2.af45d00f.chunk.js.map": "/mboholm/speechstate-lt2216/static/js/2.af45d00f.chunk.js.map",
     "index.html": "/mboholm/speechstate-lt2216/index.html",
     "static/css/main.e164979b.chunk.css.map": "/mboholm/speechstate-lt2216/static/css/main.e164979b.chunk.css.map",
-    "static/js/2.c4cdc6be.chunk.js.LICENSE.txt": "/mboholm/speechstate-lt2216/static/js/2.c4cdc6be.chunk.js.LICENSE.txt"
+    "static/js/2.af45d00f.chunk.js.LICENSE.txt": "/mboholm/speechstate-lt2216/static/js/2.af45d00f.chunk.js.LICENSE.txt"
   },
   "entrypoints": [
     "static/js/runtime-main.2c1fcf9a.js",
-    "static/js/2.c4cdc6be.chunk.js",
+    "static/js/2.af45d00f.chunk.js",
     "static/css/main.e164979b.chunk.css",
-    "static/js/main.7345715b.chunk.js"
+    "static/js/main.4bde14d3.chunk.js"
   ]
 }
