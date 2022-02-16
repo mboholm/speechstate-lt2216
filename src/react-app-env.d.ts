@@ -42,8 +42,10 @@ interface SDSContext {
     day: string;
     time: string;
     person: string; 
+    feature: string; 
+    answer: string;
     // ============
-    // MB. for jokes machine (in class)
+    // MB. for joke machine (in class)
     category: string;
     joke: string;
     // ============
