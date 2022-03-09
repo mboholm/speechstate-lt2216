@@ -36,6 +36,9 @@ interface SDSContext {
     azureAuthorizationToken: string;
     audioCtx: any;
 
+    // MB. user
+    user: string;
+
     // MB. task parameters
     // ============
     title: string;
@@ -44,11 +47,16 @@ interface SDSContext {
     person: string; 
     feature: string; 
     answer: string;
+    // ============ LAB5
+    correction: number
+    timeout: number
+
     // ============
     // MB. for joke machine (in class)
     category: string;
     joke: string;
     // ============
+
 }
 
 type SDSEvent =
@@ -64,4 +72,5 @@ type SDSEvent =
     | { type: 'LISTEN' }
     | { type: 'TIMEOUT' }
     | { type: 'SPEAK', value: string }
+    | { type: 'RECSTOP' }
     ;
