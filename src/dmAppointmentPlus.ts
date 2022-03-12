@@ -1,13 +1,13 @@
+import { TIMEOUT } from "dns";
 import { Context } from "microsoft-cognitiveservices-speech-sdk/distrib/lib/src/common.speech/RecognizerConfig";
 import { MachineConfig, send, Action, assign, State } from "xstate";
 import { respond } from "xstate/lib/actions";
-
 
 function say(text: string): Action<SDSContext, SDSEvent> {
     return send((_context: SDSContext) => ({ type: "SPEAK", value: text }))
 }
 
-function sayAnything( functionForWhatToSay: any ) {
+function sayAnything( functionForWhatToSay: any ) { // MB. This is basically send() under an another name
     return send(functionForWhatToSay)
 }
 
@@ -48,22 +48,59 @@ function askAndListen(): MachineConfig<SDSContext, any, SDSEvent> {     // MB cr
                 target: '#root.dm.help',
                 cond: (context: SDSContext) => context.recResult[0].utterance === "Help."
             },
-            //{ target: 'nomatch' }
-
-            // -----------------------------------
             { 
-                target: '#root.dm.init',
-                cond: (context: SDSContext) => context.correction > 3
-            },
-            {
-                target: '#root.dm.noGrammar'
+                target: 'gate',
             }
-            // ------------------------------------
-
-
             ],
-            TIMEOUT: 'prompt'
+            TIMEOUT: [
+                {
+                    target: 'prompt',
+                    cond: (context: SDSContext) => context.timeout < 3,
+                    actions: assign({timeout: (context) => context.timeout + 1 })
+                },
+                {
+                    target: '#root.dm.init'
+                }
+            ]
         }
+    }
+}
+
+function backToConversation(correctionExpression: string, whereToGo: string): MachineConfig<SDSContext, any, SDSEvent> {
+    return {
+        entry: say(correctionExpression),
+        on: { 
+            ENDSPEECH: {
+                target: whereToGo,
+                internal: false,
+                actions: assign({correction: (context) => context.correction + 1 }), // add 1 on every attempt
+            } 
+        }
+    }
+}
+
+function nomatchHandling() {
+    return {
+        gate: {
+            entry: (context:SDSContext) => console.log(`Correction count: ${context.correction}`),
+            always: [
+                {
+                    target: 'firstConfusion',
+                    cond: (context: SDSContext) => context.correction === 0
+                },
+                {
+                    target: 'secondConfusion',
+                    cond: (context: SDSContext) => context.correction === 1
+                },
+                {
+                    target: 'thirdConfusion',
+                    cond: (context: SDSContext) => context.correction === 2
+                }
+            ]
+        },
+        firstConfusion: {...backToConversation("I do not understand. Please tell me again.", "prompt")},
+        secondConfusion: {...backToConversation("I still do not understand. Please tell me again.", "prompt")},
+        thirdConfusion: {...backToConversation("This is not going anywhere. Good bye.", '#root.dm.init')}
     }
 }
 
@@ -75,10 +112,7 @@ function openInfoRequest( whatToSay: any , whereToTransition: string, contextFil
                 on: { ENDSPEECH: 'ask' }
             },
             ask: { entry: send('LISTEN') },
-            nomatch: {
-                entry: say("Sorry, I don't know what that is. Tell me something I know."),
-                on: { ENDSPEECH: 'ask' }
-            }
+            ...nomatchHandling()
         },
         on: {
             RECOGNISED: [
@@ -91,24 +125,33 @@ function openInfoRequest( whatToSay: any , whereToTransition: string, contextFil
                     target: '#root.dm.help',
                     cond: (context: SDSContext) => context.recResult[0].utterance === "Help."
                 },
-                { target: '.nomatch' }
+                { target: '.gate' }
             ],
-            TIMEOUT: '.prompt' 
+            TIMEOUT: [
+                {
+                    target: '.prompt',
+                    cond: (context: SDSContext) => context.timeout < 3,
+                    actions: assign({timeout: (context) => context.timeout + 1 })
+                },
+                {
+                    target: '#root.dm.init'
+                }
+            ]
         }
     }
 }
 
-function binaryInfoRequest( whatToSay: any, onYes: string, onNo: string ) {
+function binaryInfoRequest( 
+    whatToSay: any, 
+    onYes: string, 
+    onNo: string ) {
     return {
         prompt: {
             entry: sayAnything(whatToSay),                    
             on: { ENDSPEECH: 'ask' }
         },
         ask: {...askAndListen()},
-        nomatch: {
-            entry: say("Sorry. I do not understand. Please tell me again."),                    
-            on: { ENDSPEECH: 'ask' }
-        },
+        ...nomatchHandling(),
         proceed: {
             always: [
                 {
@@ -125,11 +168,21 @@ function binaryInfoRequest( whatToSay: any, onYes: string, onNo: string ) {
     }
 }
 
+function setUp(): MachineConfig<SDSContext, any, SDSEvent> {
+    return {
+        initial: "prompt",
+        entry: [
+            assign( {correction: (context) => context.correction = 0} ), 
+            assign( {timeout: (context) => context.timeout = 0} )
+        ]
+    }
+}
+
 const grammar: { [index: string]: { title?: string, day?: string, time?: string, answer?: string} } = {
     "Lecture.": { title: "Dialogue systems lecture" },
     "Lunch.": { title: "Lunch at the canteen" },
     "on Friday.": { day: "Friday" },
-    "Monday": { day: "Monday" },           // MB. some new grammar ...   VVVVVVV
+    "Monday": { day: "Monday" },           // MB. some new grammar ...   VVVVVVV (Lab2)
     "Tuesday": { day: "Tuesday" },
     "Wednesday": { day: "Wednesday" },
     "Thursday": { day: "Thursday" },
@@ -161,72 +214,56 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
     states: { // MB. `states` start here 
         idle: { on: { CLICK: 'init' } },
         init: { on: { TTS_READY: 'conversation', CLICK: 'conversation' } }, //MB. 'welcome' --> 'conversation'
-        noInput: {   //MB lab5
-            // 3 attemps for every state?
-            // history
-            states: {
-                firstImpatience: {},
-                secondImpatience: {},
-                thirdImpatience: {}
-            }
-        },
-        noGrammar: {   //MB.lab5 ... or nomatch
-            // 3 attemps for every state?
-            // history
-            states: {
-                firstConfusion: {},
-                secondConfusion: {},
-                thirdConfusion: {}
-            }
-        },  
+
         help: {       //MB lab5
-            //
             entry: say("Calm down. I will walk you through this."),
             on: { 
                 ENDSPEECH: '#root.dm.conversation.hist' 
             }
         },
         conversation: {
-            entry: [
-                assign( {user: (context) => context.user = "Max"} ), 
-                assign( {correction: (context) => context.correction = 0} ),
-                assign( {timeout: (context) => context.timeout = 0} )
-        ],
+            entry: assign( {user: (context) => context.user = "Max"} ),
             initial: "welcome",
             states: { 
                 hist:{
                     type: "history",
-                    history: "shallow"
+                    history: "shallow" // MB. shallow = default
                 },  
                 welcome: {      // MB.
-                    initial: 'prompt',
+                    ...setUp(),
                     states: {
                         prompt: {
                             entry: send((context: SDSContext) => ({type: "SPEAK", value: `Hi ${context.user}!`})),
                             on: { ENDSPEECH: 'ask' }
                         },
                         ask: { entry: send('LISTEN') },
-                        nomatch: {
-                            entry: say("Sorry, I don't know what that is. I can only book meetings and tell you about people."),
-                            on: { ENDSPEECH: 'ask' }
-                        }
+                        ...nomatchHandling()
                     },
                     on: {
                         RECOGNISED: [
                             {
-                                target: 'createMeeting',
+                                target: '#root.dm.conversation.createMeeting',
                                 cond: (context) => context.recResult[0].utterance === "Create a meeting."
                             },
                             {
-                                target: 'XIs',
+                                target: '#root.dm.conversation.XIs',
                                 cond: (context) => findWhoIs(context.recResult[0].utterance) === "Who is",
                                 actions: [
                                     assign({ person: (context) => findName(context.recResult[0].utterance)! }),
                                 ]
                             },
-                            { target: '.nomatch' }
+                            { target: '.gate' }
                         ],
-                        TIMEOUT: '.prompt'
+                        TIMEOUT: [
+                            {
+                                target: '.prompt',
+                                cond: (context: SDSContext) => context.timeout < 3,
+                                actions: assign({timeout: (context) => context.timeout + 1 })
+                            },
+                            {
+                                target: '#root.dm.init'
+                            }
+                        ]
                     },
 
                 },
@@ -262,7 +299,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 }, 
 
                 MeetX: {
-                    initial: 'prompt',
+                    ...setUp(),
                     states: {...binaryInfoRequest(
                             (context: SDSContext) => ({type: "SPEAK", value: `Do you want to meet ${context.person}?.`}),
                             '#root.dm.conversation.setDay',
@@ -278,7 +315,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 },           
 
                 createMeeting: { // MB.     [START] --> [TITLE?]
-                    initial: 'prompt',
+                    ...setUp(),
                     ...openInfoRequest(
                         (context:SDSContext) => ({type: "SPEAK", value: "Let's create a meeting. What is it about?"}),
                         '#root.dm.conversation.setDay',
@@ -288,7 +325,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 }, 
 
                 setDay: {   // MB.          ... --> [DAY?] --> 
-                    initial: 'prompt',
+                    ...setUp(),
                     ...openInfoRequest(
                         (context:SDSContext)=>({type:"SPEAK", value:"On which day is it?."}),
                         '#root.dm.conversation.askComplete',
@@ -298,7 +335,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 },         
 
                 askComplete: { // MB.           ... --> [COMPLETE?] --> 
-                    initial: 'prompt',
+                    ...setUp(),
                     states: {...binaryInfoRequest(
                         (context: SDSContext) => ({type:"SPEAK", value: "Will it take the whole day?."}),
                         '#root.dm.conversation.confirmationComplete',
@@ -308,7 +345,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 },           
 
                 setTime: { // MB.           ... --> [TIME?] --> 
-                    initial: 'prompt',
+                    ...setUp(),
                     ...openInfoRequest(
                         (context: SDSContext) => ({type: "SPEAK", value: "What time is your meeting?."}),
                         '#root.dm.conversation.confirmationTime',
@@ -318,7 +355,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 },
 
                 confirmationTime: { // MB.     [CONFIRM TIME]
-                    initial: 'prompt',
+                    ...setUp(),
                     states: {...binaryInfoRequest(
                             (context: SDSContext)=>({type: "SPEAK", value: `Do you want me to create a meeting titled ${context.title} on ${context.day} at ${context.time}?.`}),
                             '#root.dm.conversation.confirmationMeeting',
@@ -327,7 +364,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 },
 
                 confirmationComplete: { // MB.        [CONFIRM COMPLETE]
-                    initial: 'prompt',
+                    ...setUp(),
                     states: {...binaryInfoRequest(
                         (context:SDSContext)=>({type: "SPEAK", value: `Do you want me to create a meeting titled ${context.title} on ${context.day} for the whole day?.`}),
                         '#root.dm.conversation.confirmationMeeting',
