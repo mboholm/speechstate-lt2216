@@ -48,8 +48,10 @@ interface SDSContext {
     feature: string; 
     answer: string;
     // ============ LAB5
-    correction: number
-    timeout: number
+    correction: number;
+    timeout: number;
+    clevel: number;
+    whatissaid: string;
 
     // ============
     // MB. for joke machine (in class)

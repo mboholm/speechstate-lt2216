@@ -34,35 +34,273 @@ function keepItShort(definiens: string, keep: number) {    // MB created functio
     return j
 }
 
-function askAndListen(): MachineConfig<SDSContext, any, SDSEvent> {     // MB created function for lab 2
+function binaryInfoRequest(whatToSay: any, onYes: string, onNo: string ):MachineConfig<SDSContext, any, SDSEvent> {
     return {
-        entry: send('LISTEN'),
-        on: {
-            RECOGNISED: [
-            {
-                target: 'proceed',
-                cond: (context) => "answer" in (grammar[context.recResult[0].utterance] || {}), 
-                actions: assign({ answer: (context) => grammar[context.recResult[0].utterance].answer! })
+        initial: "prompt",
+        entry: [
+            assign( {correction: (context) => context.correction = 0} ), 
+            assign( {timeout: (context) => context.timeout = 0} )
+        ],
+        states: {
+            prompt: {
+                entry: sayAnything(whatToSay),                    
+                on: { ENDSPEECH: 'ask' }
             },
-            {
-                target: '#root.dm.help',
-                cond: (context: SDSContext) => context.recResult[0].utterance === "Help."
-            },
-            { 
-                target: 'gate',
-            }
-            ],
-            TIMEOUT: [
-                {
-                    target: 'prompt',
-                    cond: (context: SDSContext) => context.timeout < 3,
-                    actions: assign({timeout: (context) => context.timeout + 1 })
-                },
-                {
-                    target: '#root.dm.init'
+            ask: {
+                entry: send('LISTEN'),
+                on: {
+                    RECOGNISED: {
+                        target: 'cMgnt',
+                        actions: [
+                            assign({ whatissaid: (context) => context.recResult[0].utterance }),
+                            assign({ clevel: (context) => context.recResult[0].confidence })
+                        ]
+                    },
+                    TIMEOUT: [
+                        {
+                            target: 'prompt',
+                            cond: (context: SDSContext) => context.timeout < 3,
+                            actions: assign({timeout: (context) => context.timeout + 1 })
+                        },
+                        {
+                            target: '#root.dm.init'
+                        }
+                    ]
                 }
-            ]
-        }
+            },
+            cMgnt: {
+                entry: (context: SDSContext) => console.log(context.clevel),
+                always: [
+                    {
+                        target: 'cReq',
+                        cond: (context) => context.clevel < 0.5 // MB. threshold for confidence
+                    },
+                    {
+                        target: 'mainTaskProcessing'
+                    },
+                ]
+            },
+            cReq: {
+                initial: "prompt",
+                states: {
+                    prompt: {
+                        entry: sayAnything((context: SDSContext) => ({type: "SPEAK", value: `Did you say ${context.whatissaid}.`})),
+                        on: { ENDSPEECH: 'confirmation' }
+                    },
+                    confirmation: {entry: send('LISTEN')},
+                },
+                on: {
+                    RECOGNISED: [
+                    {
+                        target: 'cReqProcessing',
+                        cond: (context) => "answer" in (grammar[context.recResult[0].utterance] || {}), 
+                        actions: assign({ answer: (context) => grammar[context.recResult[0].utterance].answer! })
+                    },
+                    {
+                        target: '#root.dm.help',
+                        cond: (context: SDSContext) => context.recResult[0].utterance === "Help."
+                    },
+                    { // MB. Simplified... no altered reprompts or conditions
+                        target: '.prompt'
+                    }
+                    ],
+                    TIMEOUT: [
+                        { // MB. Simplified...
+                            target: '.prompt'
+                        },        
+                    ]
+                }
+            },
+            cReqProcessing: {
+                always: [
+                    {
+                        target: 'mainTaskProcessing',
+                        cond: (context) => context.answer === "Yes."
+                    },
+                    {
+                        target: 'prompt',
+                        cond: (context) => context.answer === "No."
+                    },
+                ]
+            },
+            mainTaskProcessing: {
+                always: [
+                    {
+                        target: 'proceed',
+                        cond: (context) => "answer" in (grammar[context.whatissaid] || {}), 
+                        actions: assign({ answer: (context) => grammar[context.whatissaid].answer! })
+                    },
+                    {
+                        target: '#root.dm.help',
+                        cond: (context: SDSContext) => context.whatissaid === "Help."
+                    },
+                    { 
+                        target: 'gate',
+                    }
+                ]
+            },
+            proceed: {
+                always: [
+                    {
+                        target: onYes,
+                        cond: (context: SDSContext) => context.answer === "Yes.",
+                    },
+                    {
+                        target: onNo,
+                        cond: (context: SDSContext) => context.answer === "No.",
+                    },
+                ]
+            },
+            gate: { // MB. nomatchHandling
+                entry: (context:SDSContext) => console.log(`Correction count: ${context.correction}`),
+                always: [
+                    {
+                        target: 'firstConfusion',
+                        cond: (context: SDSContext) => context.correction === 0
+                    },
+                    {
+                        target: 'secondConfusion',
+                        cond: (context: SDSContext) => context.correction === 1
+                    },
+                    {
+                        target: 'thirdConfusion',
+                        cond: (context: SDSContext) => context.correction === 2
+                    }
+                ]
+            },
+            firstConfusion: {...backToConversation("I do not understand. Please tell me again.", "prompt")},
+            secondConfusion: {...backToConversation("I still do not understand. Please tell me again.", "prompt")},
+            thirdConfusion: {...backToConversation("This is not going anywhere. Good bye.", '#root.dm.init')},
+        },
+    }
+}
+
+function openInfoRequest(whatToSay: any , whereToTransition: string, contextFiller: string, whatToAssign: any): MachineConfig<SDSContext, any, SDSEvent> {
+    return {
+        initial: "prompt",
+        entry: [
+            assign( {correction: (context) => context.correction = 0} ), 
+            assign( {timeout: (context) => context.timeout = 0} )
+        ],
+        states: {
+            prompt: {
+                entry: sayAnything(whatToSay),                    
+                on: { ENDSPEECH: 'ask' }
+            },
+            ask: {
+                entry: send('LISTEN'),
+                on: {
+                    RECOGNISED: {
+                        target: 'cMgnt',
+                        actions: [
+                            assign({ whatissaid: (context) => context.recResult[0].utterance }),
+                            assign({ clevel: (context) => context.recResult[0].confidence })
+                        ]
+                    },
+                    TIMEOUT: [
+                        {
+                            target: 'prompt',
+                            cond: (context: SDSContext) => context.timeout < 3,
+                            actions: assign({timeout: (context) => context.timeout + 1 })
+                        },
+                        {
+                            target: '#root.dm.init'
+                        }
+                    ]
+                }
+            },
+            cMgnt: {
+                entry: (context: SDSContext) => console.log(context.clevel),
+                always: [
+                    {
+                        target: 'cReq',
+                        cond: (context) => context.clevel < 0.5
+                    },
+                    {
+                        target: 'mainTaskProcessing'
+                    },
+                ]
+            },
+            cReq: {
+                initial: "prompt",
+                states: {
+                    prompt: {
+                        entry: sayAnything((context: SDSContext) => ({type: "SPEAK", value: `Did you say ${context.whatissaid}.`})),
+                        on: { ENDSPEECH: 'confirmation' }
+                    },
+                    confirmation: {entry: send('LISTEN')},
+                },
+                on: {
+                    RECOGNISED: [
+                    {
+                        target: 'cReqProcessing',
+                        cond: (context) => "answer" in (grammar[context.recResult[0].utterance] || {}), 
+                        actions: assign({ answer: (context) => grammar[context.recResult[0].utterance].answer! })
+                    },
+                    {
+                        target: '#root.dm.help',
+                        cond: (context: SDSContext) => context.recResult[0].utterance === "Help."
+                    },
+                    { // MB. Simplified... no altered reprompts or conditions
+                        target: '.prompt'
+                    }
+                    ],
+                    TIMEOUT: [
+                        { // MB. Simplified...
+                            target: '.prompt'
+                        },        
+                    ]
+                }
+            },
+            cReqProcessing: {
+                always: [
+                    {
+                        target: 'mainTaskProcessing',
+                        cond: (context) => context.answer === "Yes."
+                    },
+                    {
+                        target: 'prompt',
+                        cond: (context) => context.answer === "No."
+                    },
+                ]
+            },
+            mainTaskProcessing: {
+                always: [
+                    {
+                        target: whereToTransition,
+                        cond: (context) => contextFiller in (grammar[context.whatissaid] || {}), 
+                        actions: assign(whatToAssign)
+                    },
+                    {
+                        target: '#root.dm.help',
+                        cond: (context: SDSContext) => context.whatissaid === "Help."
+                    },
+                    { 
+                        target: 'gate',
+                    }
+                ]
+            },
+            gate: {  // MB. nomatchHandling
+                entry: (context:SDSContext) => console.log(`Correction count: ${context.correction}`),
+                always: [
+                    {
+                        target: 'firstConfusion',
+                        cond: (context: SDSContext) => context.correction === 0
+                    },
+                    {
+                        target: 'secondConfusion',
+                        cond: (context: SDSContext) => context.correction === 1
+                    },
+                    {
+                        target: 'thirdConfusion',
+                        cond: (context: SDSContext) => context.correction === 2
+                    }
+                ]
+            },
+            firstConfusion: {...backToConversation("I do not understand. Please tell me again.", "prompt")},
+            secondConfusion: {...backToConversation("I still do not understand. Please tell me again.", "prompt")},
+            thirdConfusion: {...backToConversation("This is not going anywhere. Good bye.", '#root.dm.init')},
+        },
     }
 }
 
@@ -101,70 +339,6 @@ function nomatchHandling() {
         firstConfusion: {...backToConversation("I do not understand. Please tell me again.", "prompt")},
         secondConfusion: {...backToConversation("I still do not understand. Please tell me again.", "prompt")},
         thirdConfusion: {...backToConversation("This is not going anywhere. Good bye.", '#root.dm.init')}
-    }
-}
-
-function openInfoRequest( whatToSay: any , whereToTransition: string, contextFiller: string, whatToAssign: any ): MachineConfig<SDSContext, any, SDSEvent> {
-    return {
-        states: {
-            prompt: {
-                entry: sayAnything(whatToSay),
-                on: { ENDSPEECH: 'ask' }
-            },
-            ask: { entry: send('LISTEN') },
-            ...nomatchHandling()
-        },
-        on: {
-            RECOGNISED: [
-                {
-                    target: whereToTransition, 
-                    cond: (context: SDSContext) => contextFiller in (grammar[context.recResult[0].utterance] || {}),
-                    actions: assign(whatToAssign)
-                },
-                {
-                    target: '#root.dm.help',
-                    cond: (context: SDSContext) => context.recResult[0].utterance === "Help."
-                },
-                { target: '.gate' }
-            ],
-            TIMEOUT: [
-                {
-                    target: '.prompt',
-                    cond: (context: SDSContext) => context.timeout < 3,
-                    actions: assign({timeout: (context) => context.timeout + 1 })
-                },
-                {
-                    target: '#root.dm.init'
-                }
-            ]
-        }
-    }
-}
-
-function binaryInfoRequest( 
-    whatToSay: any, 
-    onYes: string, 
-    onNo: string ) {
-    return {
-        prompt: {
-            entry: sayAnything(whatToSay),                    
-            on: { ENDSPEECH: 'ask' }
-        },
-        ask: {...askAndListen()},
-        ...nomatchHandling(),
-        proceed: {
-            always: [
-                {
-                    target: onYes,
-                    cond: (context: SDSContext) => context.answer === "Yes.",
-                },
-                {
-                    target: onNo,
-                    cond: (context: SDSContext) => context.answer === "No.",
-                },
-
-            ]
-        }
     }
 }
 
@@ -213,7 +387,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
     initial: 'idle',
     states: { // MB. `states` start here 
         idle: { on: { CLICK: 'init' } },
-        init: { on: { TTS_READY: 'conversation', CLICK: 'conversation' } }, //MB. 'welcome' --> 'conversation'
+        init: { on: { TTS_READY: 'conversation', CLICK: 'conversation' } }, //MB. changed: 'welcome' --> 'conversation'
 
         help: {       //MB lab5
             entry: say("Calm down. I will walk you through this."),
@@ -221,14 +395,17 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 ENDSPEECH: '#root.dm.conversation.hist' 
             }
         },
+
         conversation: {
             entry: assign( {user: (context) => context.user = "Max"} ),
-            initial: "welcome",
+            initial: "welcome",  
             states: { 
+
                 hist:{
                     type: "history",
-                    history: "shallow" // MB. shallow = default
-                },  
+                    history: "shallow" // MB. shallow by default
+                }, 
+
                 welcome: {      // MB.
                     ...setUp(),
                     states: {
@@ -265,7 +442,6 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                             }
                         ]
                     },
-
                 },
 
                 XIs: {                 // MB.
@@ -299,12 +475,11 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 }, 
 
                 MeetX: {
-                    ...setUp(),
-                    states: {...binaryInfoRequest(
-                            (context: SDSContext) => ({type: "SPEAK", value: `Do you want to meet ${context.person}?.`}),
-                            '#root.dm.conversation.setDay',
-                            '#root.dm.conversation.goodBye'
-                            )}
+                    ...binaryInfoRequest(
+                        (context: SDSContext) => ({type: "SPEAK", value: `Do you want to meet ${context.person}?.`}),
+                        '#root.dm.conversation.setDay',
+                        '#root.dm.conversation.goodBye'
+                    )
                 }, 
 
                 goodBye: {               // MB. 
@@ -315,37 +490,32 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 },           
 
                 createMeeting: { // MB.     [START] --> [TITLE?]
-                    ...setUp(),
                     ...openInfoRequest(
                         (context:SDSContext) => ({type: "SPEAK", value: "Let's create a meeting. What is it about?"}),
                         '#root.dm.conversation.setDay',
                         "title",
                         { title: (context: SDSContext) => grammar[context.recResult[0].utterance].title! }
-                        )
+                    )
                 }, 
 
                 setDay: {   // MB.          ... --> [DAY?] --> 
-                    ...setUp(),
                     ...openInfoRequest(
                         (context:SDSContext)=>({type:"SPEAK", value:"On which day is it?."}),
                         '#root.dm.conversation.askComplete',
                         "day",
                         { day: (context: SDSContext) => grammar[context.recResult[0].utterance].day! }
-                        )
+                    )
                 },         
 
                 askComplete: { // MB.           ... --> [COMPLETE?] --> 
-                    ...setUp(),
-                    states: {...binaryInfoRequest(
+                    ...binaryInfoRequest(
                         (context: SDSContext) => ({type:"SPEAK", value: "Will it take the whole day?."}),
                         '#root.dm.conversation.confirmationComplete',
                         '#root.dm.conversation.setTime'
-                        )
-                    }
+                    )
                 },           
 
                 setTime: { // MB.           ... --> [TIME?] --> 
-                    ...setUp(),
                     ...openInfoRequest(
                         (context: SDSContext) => ({type: "SPEAK", value: "What time is your meeting?."}),
                         '#root.dm.conversation.confirmationTime',
@@ -355,24 +525,22 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 },
 
                 confirmationTime: { // MB.     [CONFIRM TIME]
-                    ...setUp(),
-                    states: {...binaryInfoRequest(
-                            (context: SDSContext)=>({type: "SPEAK", value: `Do you want me to create a meeting titled ${context.title} on ${context.day} at ${context.time}?.`}),
-                            '#root.dm.conversation.confirmationMeeting',
-                            '#root.dm.conversation.welcome')
-                    },
+                    ...binaryInfoRequest(
+                        (context: SDSContext)=>({type: "SPEAK", value: `Do you want me to create a meeting titled ${context.title} on ${context.day} at ${context.time}?.`}),
+                        '#root.dm.conversation.confirmationMeeting',
+                        '#root.dm.conversation.welcome'
+                        )
                 },
 
                 confirmationComplete: { // MB.        [CONFIRM COMPLETE]
-                    ...setUp(),
-                    states: {...binaryInfoRequest(
+                    ...binaryInfoRequest(
                         (context:SDSContext)=>({type: "SPEAK", value: `Do you want me to create a meeting titled ${context.title} on ${context.day} for the whole day?.`}),
                         '#root.dm.conversation.confirmationMeeting',
-                        '#root.dm.conversation.welcome')
-                    },            
+                        '#root.dm.conversation.welcome'
+                    )         
                 },
 
-                confirmationMeeting: { // MB. 
+                confirmationMeeting: {  
                     initial: 'prompt',
                     states: {
                         prompt: {
