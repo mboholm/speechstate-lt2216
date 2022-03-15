@@ -3,6 +3,19 @@ import { Context } from "microsoft-cognitiveservices-speech-sdk/distrib/lib/src/
 import { MachineConfig, send, Action, assign, State } from "xstate";
 import { respond } from "xstate/lib/actions";
 
+//const rasaurl = 'https://rasa-nlu-api-00.herokuapp.com/model/parse'
+const rasaurl = 'https://dialsys2022.herokuapp.com/model/parse'
+const nluRequest = (text: string) =>
+  fetch(new Request(rasaurl, {
+      method: 'POST',
+      body: `{"text": "${text}"}`
+  }))
+      .then(data => data.json());
+
+function removeUnderscore (text: string) {
+    return text.replace("_", " ")
+}
+
 function say(text: string): Action<SDSContext, SDSEvent> {
     return send((_context: SDSContext) => ({ type: "SPEAK", value: text }))
 }
@@ -352,7 +365,15 @@ function setUp(): MachineConfig<SDSContext, any, SDSEvent> {
     }
 }
 
-const grammar: { [index: string]: { title?: string, day?: string, time?: string, answer?: string} } = {
+const grammar: { [index: string]: 
+    { 
+        title?: string, 
+        day?: string, 
+        time?: string, 
+        answer?: string,
+        robot?: string
+    } 
+} = {
     "Lecture.": { title: "Dialogue systems lecture" },
     "Lunch.": { title: "Lunch at the canteen" },
     "on Friday.": { day: "Friday" },
@@ -381,6 +402,9 @@ const grammar: { [index: string]: { title?: string, day?: string, time?: string,
     "Yep.": { answer: "Yes." },
     "No.": { answer: "No." },
     "Nope.": { answer: "No." },
+    // =========== ROBOT STUFF  =============
+    "Activate robot.": { robot: "Active." },
+    "Robot activation.": { robot: "Active." },
 }
 
 export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
@@ -406,7 +430,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                     history: "shallow" // MB. shallow by default
                 }, 
 
-                welcome: {      // MB.
+                welcome: {      
                     ...setUp(),
                     states: {
                         prompt: {
@@ -429,6 +453,10 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                                     assign({ person: (context) => findName(context.recResult[0].utterance)! }),
                                 ]
                             },
+                            { 
+                                target: 'robotAction',
+                                cond: (context) => "robot" in (grammar[context.recResult[0].utterance] || {})
+                            },
                             { target: '.gate' }
                         ],
                         TIMEOUT: [
@@ -444,7 +472,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                     },
                 },
 
-                XIs: {                 // MB.
+                XIs: {   
                     initial: 'getFeature', 
                     states: {
                         getFeature: {
@@ -474,6 +502,68 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                     },
                 }, 
 
+                robotAction: { //MB. implemented without out-of-grammar intents and below-confidence-level-confirmation
+                    initial: 'askIntent',
+                    states: {
+                        askIntent: {
+                            initial: 'prompt',
+                            states: {
+                                prompt: {
+                                    entry: say("What do you want me to do?"), 
+                                    on: { ENDSPEECH: 'ask' }
+                                },
+                                ask: { entry: send('LISTEN') },
+                            },
+                            on: {
+                                RECOGNISED: 
+                                {
+                                    target: 'goFindIntent',
+                                    actions: assign( {intent: (context) => context.recResult[0].utterance } )
+                                },
+                                TIMEOUT: '.prompt'
+                            }
+                        },
+                        goFindIntent: {
+                            
+                            initial: 'getIntent', 
+                            states: {
+                                getIntent: {
+                                    invoke: {
+                                        id: 'getIntent',
+                                        src: (context, event) => nluRequest(context.intent),
+                                        onDone: {
+                                            target: '#root.dm.conversation.robotAction.goFindIntent.success',
+                                            actions: [
+                                                //(context, event) => console.log(context, event),
+                                                assign({ prediction: (context, event) => event.data.intent.name }), // MB. note data structure
+                                            ]
+                                        },
+                                        onError: { target: '#root.dm.conversation.robotAction.goFindIntent.fail' }
+                                    },
+                                },
+                                success: {
+                                    entry: send((context: SDSContext) => ({
+                                        type: "SPEAK", value: `OK. I will ${removeUnderscore(context.prediction)}.`
+                                    })),
+                                    on: { ENDSPEECH: '#root.dm.conversation.robotAction.askNewIntent' }
+                                },
+                                fail: {
+                                    entry: say("Sorry. Something went wrong."),
+                                    on: { ENDSPEECH: '#root.dm.init'}
+                                }
+                            },
+                        
+                        },
+                        askNewIntent: {
+                            ...binaryInfoRequest(
+                                (context: SDSContext) => ({type: "SPEAK", value: 'Do you want me to do anything else?.'}),
+                                '#root.dm.conversation.robotAction.askIntent',
+                                '#root.dm.conversation.goodBye'
+                            )
+                        }
+                    },
+                },
+
                 MeetX: {
                     ...binaryInfoRequest(
                         (context: SDSContext) => ({type: "SPEAK", value: `Do you want to meet ${context.person}?.`}),
@@ -482,14 +572,14 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                     )
                 }, 
 
-                goodBye: {               // MB. 
+                goodBye: {   
                     initial: 'prompt',
                     states: {prompt: {
                         entry: say("OK. Good bye."), 
                         on: { ENDSPEECH: '#root.dm.init'}}}
                 },           
 
-                createMeeting: { // MB.     [START] --> [TITLE?]
+                createMeeting: { 
                     ...openInfoRequest(
                         (context:SDSContext) => ({type: "SPEAK", value: "Let's create a meeting. What is it about?"}),
                         '#root.dm.conversation.setDay',
@@ -498,7 +588,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                     )
                 }, 
 
-                setDay: {   // MB.          ... --> [DAY?] --> 
+                setDay: {    
                     ...openInfoRequest(
                         (context:SDSContext)=>({type:"SPEAK", value:"On which day is it?."}),
                         '#root.dm.conversation.askComplete',
@@ -507,7 +597,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                     )
                 },         
 
-                askComplete: { // MB.           ... --> [COMPLETE?] --> 
+                askComplete: {  
                     ...binaryInfoRequest(
                         (context: SDSContext) => ({type:"SPEAK", value: "Will it take the whole day?."}),
                         '#root.dm.conversation.confirmationComplete',
@@ -515,7 +605,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                     )
                 },           
 
-                setTime: { // MB.           ... --> [TIME?] --> 
+                setTime: {  
                     ...openInfoRequest(
                         (context: SDSContext) => ({type: "SPEAK", value: "What time is your meeting?."}),
                         '#root.dm.conversation.confirmationTime',
@@ -524,7 +614,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                     )
                 },
 
-                confirmationTime: { // MB.     [CONFIRM TIME]
+                confirmationTime: { 
                     ...binaryInfoRequest(
                         (context: SDSContext)=>({type: "SPEAK", value: `Do you want me to create a meeting titled ${context.title} on ${context.day} at ${context.time}?.`}),
                         '#root.dm.conversation.confirmationMeeting',
@@ -532,7 +622,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                         )
                 },
 
-                confirmationComplete: { // MB.        [CONFIRM COMPLETE]
+                confirmationComplete: { 
                     ...binaryInfoRequest(
                         (context:SDSContext)=>({type: "SPEAK", value: `Do you want me to create a meeting titled ${context.title} on ${context.day} for the whole day?.`}),
                         '#root.dm.conversation.confirmationMeeting',

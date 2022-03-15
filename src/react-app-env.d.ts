@@ -52,7 +52,9 @@ interface SDSContext {
     timeout: number;
     clevel: number;
     whatissaid: string;
-
+    intent: string;
+    prediction: any;
+    //robot: string;
     // ============
     // MB. for joke machine (in class)
     category: string;
