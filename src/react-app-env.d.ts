@@ -54,12 +54,30 @@ interface SDSContext {
     whatissaid: string;
     intent: string;
     prediction: any;
-    //robot: string;
+    // ============ PROJECT
+
+    userRole: string;         // answerer or questioner
+    attemptsLeft: number;     // number of questions left
+
+    knowledge: any;           // json
+    characters: any;          // list of names
+    features: any;            // list of features to ask about 
+
+    //characterKnowledge: any;  // [ANSWERER] the knowledge for selected character (`selectChar`) 
+    selectChar: string        // [ANSWERER] character ranomly selected from selectChar 
+    extractFeat: any       // [ANSWERER] the feature extracted from qParser
+
+    guess: string;            // [QUESTIONER] guess of character based on builtup and knowledge 
+    builtup: any;             // [QUESTIONER] list of known features of character from system's questions 
+    selectFeat: string;       // [QUESTIONER] selected feature: askabout; remove from features 
+    nextQuestion: any;        // [QUESTIONER] CHANGE TO STRING! 
+
     // ============
     // MB. for joke machine (in class)
     category: string;
     joke: string;
     // ============
+
 
 }
 
