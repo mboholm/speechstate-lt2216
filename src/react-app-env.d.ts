@@ -56,7 +56,7 @@ interface SDSContext {
     prediction: any;
     // ============ PROJECT
 
-    userRole: string;         // answerer or questioner
+    systemRole: string;         // answerer or questioner
     attemptsLeft: number;     // number of questions left
 
     knowledge: any;           // json
