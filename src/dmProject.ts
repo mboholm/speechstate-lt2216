@@ -51,7 +51,7 @@ function updater(listOfFeatures: Array<featureValuePair>, myFeature: string, myV
         feature: myFeature,
         value: myValue
     }
-    listOfFeatures.push(fv); // THIS WILL RETURN A NUMBER!
+    listOfFeatures.push(fv); // THIS WILL RETURN A NUMBER! (AND UPDATE LIST)
     return listOfFeatures 
 }
 
@@ -95,7 +95,7 @@ function decisionMaker(clues: Array<any>, knowledge: any, characters: any, attem
             canBe.push(character);
         }  
     }
-    console.log(canBe)
+    //console.log(canBe)
     if (attemptsLeft === 0) {
         if (canBe.length === 0) {
             return characters[Math.floor(Math.random() * canBe.length)]
@@ -126,6 +126,7 @@ function qParser(text: string, S: any = rSubj, V: any = rVerb) {
             } 
         } 
     } 
+    console.log(output)
     return output
     //if (output == {}) {return "notAbleToParse"} else {return output}
 } 
@@ -139,14 +140,12 @@ function constr2feat(text: string) {
     } else return ""
     }
 
-function answerQuestionAsAnswerer(knowledgeData:any, feature:string) {
-    let myAnswer: string = "";
-    if (feature in knowledgeData) {
-        myAnswer = knowledgeData[feature];
+function answerQuestionAsAnswerer(knowledgeData:any, myCharacter: string, feature:string) {
+    if (feature in knowledgeData[myCharacter]) {
+        return knowledgeData[myCharacter][feature];
     } else {
-        myAnswer = "I do not know"
+        return "I do not know"
     };
-    return myAnswer
 }   
 
 function say(text: string): Action<SDSContext, SDSEvent> {
@@ -346,7 +345,7 @@ function giveInfo(): MachineConfig<SDSContext, any, SDSEvent> {
             giveValueOfFeature: {
                 entry: sayAnything(
                     (context: SDSContext) => 
-                    ({type: "SPEAK", value: answerQuestionAsAnswerer(context.knowledge, context.extractFeat)})
+                    ({type: "SPEAK", value: answerQuestionAsAnswerer(context.knowledge, context.selectChar, context.extractFeat)})
                 ),
                 always: "transitArea"
             }, 
@@ -357,12 +356,12 @@ function giveInfo(): MachineConfig<SDSContext, any, SDSEvent> {
                 always: '#root.dm.conversation.systemAsAnswerer.answer.ask'
             },
             endGame: {
-                entry: say("Hurrah! You guess was correct!"),
+                entry: say("Hurrah! Your guess was correct!"),
                 always: '#root.dm.init'
             },
             gate: {...nomatchHandling()},
             // V V V V V V  ---  redefined for `giveInfo()` purposes  ---  V V V V V V V V V 
-            firstConfusion: {...backToConversation("I do not understand. Please ask me a question about my character.", "ask")}, 
+            firstConfusion: {...backToConversation("Please ask me a question about my character.", "ask")}, 
             secondConfusion: {...backToConversation("I still do not understand. Please ask me a question about my character.", "ask")}, 
             thirdConfusion: {...backToConversation("This is not going anywhere. Good bye.", '#root.dm.init')}, 
         },
@@ -762,7 +761,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                                 assign( { selectChar: (context) => context.selectChar = selectX(context.characters) } ),
                                 say("OK. I have decided on a character."),
                             ],
-                            on: {ENDSPEECH: "answer"} // ... or whatever state decided on here
+                            always: "answer" // ... or whatever state decided on here
                         },
                         answer: {
                             ...giveInfo()
