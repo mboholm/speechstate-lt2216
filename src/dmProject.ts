@@ -5,6 +5,8 @@ import { respond } from "xstate/lib/actions";
 
 import * as knowledgeModule from "./knowledge.json"; // ????
 
+// ===============  UTILS ===================================
+
 const myCLevel: number = 0.3;
 const myAttempts: number = 5; 
 
@@ -156,7 +158,7 @@ function sayAnything( functionForWhatToSay: any ) { // MB. This is basically sen
     return send(functionForWhatToSay)
 }
 
-// ============================= INFORMATION REQUEST FUNCTIONS ======================================
+// ============================= INFORMATION MANAGEMENT FUNCTIONS ======================================
 
 function binaryInfoRequestTranstition(whatToSay: any, onYes: string, onNo: string ):MachineConfig<SDSContext, any, SDSEvent> {
     return {
@@ -182,8 +184,8 @@ function binaryInfoRequestTranstition(whatToSay: any, onYes: string, onNo: strin
                         actions: assign({ answer: (context) => grammar[context.whatissaid].answer! })
                     },
                     {
-                        target: '#root.dm.help',
-                        cond: (context: SDSContext) => context.whatissaid === "Help."
+                        target: '#root.dm.attempts',
+                        cond: (context: SDSContext) => context.whatissaid in askForAttemptsGrammar
                     },
                     { 
                         target: 'gate',
@@ -237,8 +239,8 @@ function binaryInfoRequestUpdate(whereToTransition: string): MachineConfig<SDSCo
                         actions: assign({ answer: (context) => grammar[context.whatissaid].answer! })
                     },
                     {
-                        target: '#root.dm.help',
-                        cond: (context: SDSContext) => context.whatissaid === "Help."
+                        target: '#root.dm.attempts',
+                        cond: (context: SDSContext) => context.whatissaid in askForAttemptsGrammar
                     },
                     { 
                         target: 'gate',
@@ -289,8 +291,8 @@ function openInfoRequest(whatToSay: any , whereToTransition: string, contextFill
                         actions: assign(whatToAssign)
                     },
                     {
-                        target: '#root.dm.help',
-                        cond: (context: SDSContext) => context.whatissaid === "Help."
+                        target: '#root.dm.attempts',
+                        cond: (context: SDSContext) => context.whatissaid in askForAttemptsGrammar
                     },
                     { 
                         target: 'gate',
@@ -310,7 +312,6 @@ function giveInfo(): MachineConfig<SDSContext, any, SDSEvent> {
         initial: "prompt",
         //initial: "ask",
         entry: [ 
-            say("hello"),
             assign( {correction: (context) => context.correction = 0} ), 
             assign( {timeout: (context) => context.timeout = 0} ),
         ],
@@ -331,8 +332,8 @@ function giveInfo(): MachineConfig<SDSContext, any, SDSEvent> {
                         cond: (context) => context.extractFeat === "notAbleToParse"
                     },
                     {
-                        target: '#root.dm.help',
-                        cond: (context: SDSContext) => context.whatissaid === "Help." 
+                        target: '#root.dm.attempts',
+                        cond: (context: SDSContext) => context.whatissaid in askForAttemptsGrammar
                     },
                     {
                         target: "endGame",
@@ -344,10 +345,14 @@ function giveInfo(): MachineConfig<SDSContext, any, SDSEvent> {
                 ]
             },
             giveValueOfFeature: {
-                entry: sayAnything(
-                    (context: SDSContext) => 
-                    ({type: "SPEAK", value: answerQuestionAsAnswerer(context.knowledge, context.selectChar, context.extractFeat)})
-                ),
+                entry: [
+                    assign({attemptsLeft: (context) => context.attemptsLeft - 1}),
+                    (context) => console.log(`Attempts left: ${context.attemptsLeft}`),
+                    sayAnything(
+                        (context: SDSContext) => 
+                        ({type: "SPEAK", value: answerQuestionAsAnswerer(context.knowledge, context.selectChar, context.extractFeat)})
+                    ),
+                ],
                 on: {ENDSPEECH: "transitArea" } 
             }, 
             transitArea: {...askWithConfidence("cMgnt", "pushForward")}, 
@@ -369,6 +374,8 @@ function giveInfo(): MachineConfig<SDSContext, any, SDSEvent> {
         },
     }
 }
+
+// ==============  UTILS OF INFOMGNT  ============================
 
 function backToConversation(correctionExpression: string, whereToGo: string): MachineConfig<SDSContext, any, SDSEvent> {
     return {
@@ -421,8 +428,8 @@ function clarificationRequest(): MachineConfig<SDSContext, any, SDSEvent> {
                 actions: assign({ answer: (context) => grammar[context.recResult[0].utterance].answer! })
             },
             {
-                target: '#root.dm.help',
-                cond: (context: SDSContext) => context.recResult[0].utterance === "Help."
+                target: '#root.dm.attempts',
+                cond: (context: SDSContext) => context.recResult[0].utterance in askForAttemptsGrammar
             },
             { // MB. Simplified... no altered reprompts or conditions
                 target: '.prompt'
@@ -496,6 +503,14 @@ function cReqResponseMgnt(exitTransition: string, restateTransition: string): Ma
 
 // ===============  GRAMMAR ==============================
 
+const askForAttemptsGrammar: Array<string> = [
+    "How many attempts do I have left?",
+    "Attmpts",
+    "How many attempts left",
+    "How many questons do I have left?",
+    "How many questions left",
+]
+
 const grammar: { [index: string]: 
     { 
         title?: string, 
@@ -504,11 +519,7 @@ const grammar: { [index: string]:
         systemRole?: string,
     } 
 } = {
-    "Lecture.": { title: "Dialogue systems lecture" },
-    "Lunch.": { title: "Lunch at the canteen" },
-    "on Friday.": { day: "Friday" },
-    "Monday": { day: "Monday" },           // MB. some new grammar ...  
-    // ============  Answers  ==============
+    // ============  Y/N Answers  ==============
     "Yes.": { answer: "yes" },
     "Yeah.": { answer: "yes" },
     "Yep.": { answer: "yes" },
@@ -527,8 +538,19 @@ const grammar: { [index: string]:
     "I want to be questioner.": { systemRole: "Answerer" },
     "You can be answerer": { systemRole: "Answerer" },
     "I want to ask the questions.": { systemRole: "Answerer" },
-    "I can ask the questions.": { systemRole: "Answerer" },  
+    "I can ask the questions.": { systemRole: "Answerer" }, 
+
+    "You can decide.": { systemRole: "Indifference" },
+    "You decide.": { systemRole: "Indifference" },
+    "I do not care.": { systemRole: "Indifference" },
+    "I don't care.": { systemRole: "Indifference" },
+    "Doesn't matter.": { systemRole: "Indifference" },
+    "Does not matter.": { systemRole: "Indifference" },
+    "It does not matter.": { systemRole: "Indifference" },
+    "It does not matter to me.": { systemRole: "Indifference" },
 }
+
+// ================  DM MACHINE  ================
 
 export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
     initial: 'idle',
@@ -536,8 +558,11 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
         idle: { on: { CLICK: 'init' } },
         init: { on: { TTS_READY: 'conversation', CLICK: 'conversation' } }, //MB. changed: 'welcome' --> 'conversation'
 
-        help: {       //MB some attempts-counter perhaps .... ????
-            entry: say("Calm down. I will walk you through this."),
+        attempts: {       //MB some attempts-counter perhaps .... ????
+            //entry: say("Calm down. I will walk you through this."),
+            entry: sayAnything(
+                (context: SDSContext) => ({type: "SPEAK", value: `You have ${context.attemptsLeft}.`})
+            ),
             on: { 
                 ENDSPEECH: '#root.dm.conversation.hist' 
             }
@@ -545,17 +570,23 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
 
         conversation: {
             entry: assign( {user: (context) => context.user = "Max"} ),
-            initial: "welcome",
-            //initial: "scratch",  
+            initial: "greeting",
             states: { 
                 hist:{ // MB. ??
                     type: "history",
                     history: "shallow" // MB. shallow by default
                 }, 
 
-                welcome: {
+                greeting: {
+                    entry: sayAnything(
+                        (context: SDSContext) => ({type: "SPEAK", value: `Hi ${context.user}.`})
+                    ),
+                    on: {ENDSPEECH: "#root.dm.conversation.gameQuest"}
+                },
+                
+                gameQuest: {
                     ...binaryInfoRequestTranstition(
-                        (context: SDSContext) => ({type: "SPEAK", value: `Hi ${context.user}! Do you want to play twenty questions?`}),
+                        (context: SDSContext) => ({type: "SPEAK", value: `Do you want to play twenty questions?`}),
                         '#root.dm.conversation.initGame',
                         '#root.dm.conversation.goodBye'
                     )
@@ -583,7 +614,6 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                         },
                         
                         activateKnowledge: {
-                            //entry: say(`${knowledgeModule.characters[0]}`),
                             always: {
                                 target: "goToRole",
                                 actions: [
@@ -607,8 +637,17 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                                     target: '#root.dm.conversation.systemAsQuestioner',
                                     cond: (context) => context.systemRole === "Questioner",
                                 },
+                                {
+                                    target: "reselectRole",
+                                    cond: (context) => context.systemRole === "Indifference"
+                                }
                             ]
                         },
+
+                        reselectRole: {
+                            entry: assign({systemRole: (context) => context.systemRole = selectX(["Answerer", "Questioner"]) }), 
+                            always: "goToRole"
+                        }
                         
                         /*
                         activateKnowledge: { // some invoke promise setup
@@ -668,7 +707,7 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                     states: {
                         prepareQuestion: {
                             entry: [
-                                (context) => console.log("My builtup:"),
+                                (context) => console.log("System acquired knowledge:"),
                                 (context) => console.log(context.builtup),
                                 assign({selectFeat: (context) => context.selectFeat = selectX(context.features)}),
                                 assign({features: (context) => context.features = remover(context.features, context.selectFeat)}),
@@ -677,10 +716,18 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                             always: "askQuestion"
                         },
                         askQuestion: {
-                            ...binaryInfoRequestUpdate("#root.dm.conversation.systemAsQuestioner.decide")
+                            ...binaryInfoRequestUpdate("#root.dm.conversation.systemAsQuestioner.addOne")
                         },
+
+                        addOne: {
+                            entry: [
+                                assign({attemptsLeft: (context) => context.attemptsLeft - 1 }),
+                                (context) => console.log(`Attempts left: ${context.attemptsLeft}.`)
+                            ], 
+                            always: "#root.dm.conversation.systemAsQuestioner.decide"
+                        },
+
                         decide: {
-                            //entry: (context) => console.log(`My builtup: ${context.builtup}`),
                             always: [
                                 {
                                     target: '#root.dm.conversation.systemAsQuestioner.prepareQuestion',
