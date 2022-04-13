@@ -35,7 +35,7 @@ In the game there are two roles: *Questioner* and *Answerer*. The game begins by
 
 **3.** From what is said by the user, the system extracts a feature *f'*. This feature extraction is rule-based, using the function `qParser`. 
 
-4. The system responds in accordance with value of *f* for *c'* in the `knowledge`. 
+**4.** The system responds in accordance with value of *f* for *c'* in the `knowledge`. 
 
 **5a.** If the `value == "success"` (only for `is_it_CHARACTER` features, e.g. `is_it_madonna`), the user "wins". 
 
